@@ -1,0 +1,89 @@
+#include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cstdint>
+
+constecpr int WARP_SIZE = 32;
+
+//warp内归约，使用shuffle
+//结束后只有lane 0持有warp的总和
+//
+tmplate <typename T>
+__device__ __forceinlince__ T warpReduceSum(T val) {
+#pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    }
+    return val;
+}
+
+
+// ============================================================
+// block 内归约：warp shuffle + shared 中转 + 第二次 warp shuffle
+// 跨 block：atomicAdd 累加到 *out
+// ============================================================
+template <int BLOCK_SIZE = 256>
+__global__ void reduce_sum_shfl_kernel(const float* __restrict__ a,
+                                       float* __restrict__ out,
+                                       int n) {
+    const int tid = threadIdx.x;
+    const int lane_id = tid & (WARP_SIZE - 1);
+    const int warp_id = tid / WARP_SIZE;
+    constexpr int NUM_WARPS = BLOCK_SIZE / WARP_SIZE;
+
+    float sum = 0.0f;
+    for (int i = blockIdx.x * blockDim.x + tid; i < n; i += blockDim.x * gridDim.x) {
+        sum += a[i];    
+    }
+
+    //warp 内shuffle归约
+    sum = warpReduceSum(sum);
+
+    //每个warp的lane 0 都把部分和写入
+    __shared__ float warp_sums[NUM_WARPS];
+    if (lane_id == 0){
+        warp_sums[warp_id] = sum;
+    }
+    __syncthreads();
+
+    //第一个warp做最后归约
+    if(warp_id == 0){
+        float v = (lane_id < NUM_WARPS) ? warp_sums[lane_id] : 0.0f;
+        v = warpReduceSum(v);
+        if (lane_id == 0){
+            atomicAdd(out, v);  
+    }
+    }
+}
+
+
+// ============================================================
+// host 包装
+// ============================================================
+torch::Tensor reduce_sum_shfl(torch::Tensor a, int64_t block, int64_t max_blocks) {
+    TORCH_CHECK(a.is_cuda(), "must be CUDA");
+    TORCH_CHECK(a.is_contiguous(), "must be contiguous");
+    TORCH_CHECK(a.scalar_type() == at::kFloat, "must be float32");
+    TORCH_CHECK(block % WARP_SIZE == 0, "block must be a multiple of 32");
+
+    int n = a.numel();
+    auto out = torch::zeros({1}, a.options());   // 清零，atomicAdd 需要
+    if (n == 0) return out;
+
+    int threads = static_cast<int>(block);
+    int blocks  = std::min<int64_t>((n + threads - 1) / threads, max_blocks);
+
+    auto stream = at::cuda::getCurrentCUDAStream();
+
+    // 简化：只支持 256 一种 BLOCK_SIZE（模板参数需编译期确定）
+    TORCH_CHECK(block == 256, "this demo only supports block==256");
+    reduce_sum_shfl_kernel<256><<<blocks, threads, 0, stream>>>(
+        a.data_ptr<float>(), out.data_ptr<float>(), n);
+
+    return out;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("reduce_sum_shfl", &reduce_sum_shfl, "reduce_sum_shfl(a, block, max_blocks)");
+}

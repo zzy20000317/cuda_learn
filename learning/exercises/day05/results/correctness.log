@@ -1,0 +1,39 @@
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=128
+PASS correctness: empty/tails/ones/signed-pattern/random; block=128 grid-cap=1
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=128
+PASS correctness: empty/tails/ones/signed-pattern/random; block=128 grid-cap=17
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=128
+PASS correctness: empty/tails/ones/signed-pattern/random; block=128 grid-cap=256
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=256
+PASS correctness: empty/tails/ones/signed-pattern/random; block=256 grid-cap=1
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=256
+PASS correctness: empty/tails/ones/signed-pattern/random; block=256 grid-cap=17
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=256
+PASS correctness: empty/tails/ones/signed-pattern/random; block=256 grid-cap=256
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=512
+PASS correctness: empty/tails/ones/signed-pattern/random; block=512 grid-cap=1
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=512
+PASS correctness: empty/tails/ones/signed-pattern/random; block=512 grid-cap=17
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=512
+PASS correctness: empty/tails/ones/signed-pattern/random; block=512 grid-cap=256
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=1024
+PASS correctness: empty/tails/ones/signed-pattern/random; block=1024 grid-cap=1
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=1024
+PASS correctness: empty/tails/ones/signed-pattern/random; block=1024 grid-cap=17
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=65539 block=1024
+PASS correctness: empty/tails/ones/signed-pattern/random; block=1024 grid-cap=256
+PASS requested-size checks: N=65539 (FP64 CPU reference)
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 SM_count=16 N=1048579 block=256
+PASS correctness: empty/tails/ones/signed-pattern/random; block=256 grid-cap=0
+PASS requested-size checks: N=1048579 (FP64 CPU reference)

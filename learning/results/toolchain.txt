@@ -1,0 +1,15 @@
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2025 NVIDIA Corporation
+Built on Fri_Feb_21_20:23:50_PST_2025
+Cuda compilation tools, release 12.8, V12.8.93
+Build cuda_12.8.r12.8/compiler.35583870_0
+GPU=NVIDIA GeForce RTX 3050 Laptop GPU SM=8.6 VRAM=4095 MiB SM_count=16
+PASS: nvcc, CUDA runtime, kernel launch, GPU copy
+exec: /home/zzy/vitamin-cuda-main/learning/tools/cuda-gdb/bin/cuda-gdb-python3.11-tui --version
+NVIDIA (R) cuda-gdb 12.8
+Portions Copyright (C) 2007-2024 NVIDIA Corporation
+Based on GNU gdb 13.2
+Copyright (C) 2023 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

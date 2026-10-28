@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CUDA: verify",
+      "type": "process",
+      "command": "${workspaceFolder}/verify.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "CUDA: benchmark add",
+      "type": "process",
+      "command": "${workspaceFolder}/run",
+      "args": [
+        "python",
+        "exercises/bench_add.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

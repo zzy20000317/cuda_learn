@@ -1,0 +1,19 @@
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+ColumnLimit: 120
+IndentPPDirectives: BeforeHash
+
+AlwaysBreakTemplateDeclarations: Yes
+AlignEscapedNewlines: Right
+
+SpacesInAngles: false
+BinPackParameters: false
+BinPackArguments: false
+AlignAfterOpenBracket: Align
+
+IndentCaseLabels: true
+IndentCaseBlocks: false
+
+AllowShortCaseLabelsOnASingleLine: true

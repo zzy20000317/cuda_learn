@@ -1,0 +1,171 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3050 Laptop GPU",
+  "capability": [
+    8,
+    6
+  ],
+  "torch": "2.9.1+cu128",
+  "cuda": "12.8",
+  "timing": "CUDA events; warm cache; 20 warmup; median of 5 x 50 calls; excludes JIT and input initialization",
+  "checks": {
+    "exact_cases": 75,
+    "nondefault_stream": true,
+    "invalid_inputs": true,
+    "empty_dimensions": true,
+    "offset_view": true
+  },
+  "rows": [
+    {
+      "rows": 32,
+      "cols": 32,
+      "version": "naive_read",
+      "torch_ms": 0.025778560638427733,
+      "custom_ms": 0.011550719738006593,
+      "speedup_vs_torch": 2.23177093922604,
+      "copy_ms": 0.012451839447021485,
+      "effective_GB_s": 0.7092198742425522
+    },
+    {
+      "rows": 32,
+      "cols": 32,
+      "version": "naive_write",
+      "torch_ms": 0.025778560638427733,
+      "custom_ms": 0.012222720384597778,
+      "speedup_vs_torch": 2.109068998331344,
+      "copy_ms": 0.012451839447021485,
+      "effective_GB_s": 0.6702272278373469
+    },
+    {
+      "rows": 32,
+      "cols": 32,
+      "version": "shared_32x32",
+      "torch_ms": 0.025778560638427733,
+      "custom_ms": 0.010076160430908204,
+      "speedup_vs_torch": 2.55837139704059,
+      "copy_ms": 0.012451839447021485,
+      "effective_GB_s": 0.8130080953129111
+    },
+    {
+      "rows": 256,
+      "cols": 512,
+      "version": "naive_read",
+      "torch_ms": 0.014602240324020386,
+      "custom_ms": 0.023838720321655273,
+      "speedup_vs_torch": 0.612542960653622,
+      "copy_ms": 0.010751999616622925,
+      "effective_GB_s": 43.986253702027184
+    },
+    {
+      "rows": 256,
+      "cols": 512,
+      "version": "naive_write",
+      "torch_ms": 0.014602240324020386,
+      "custom_ms": 0.01380352020263672,
+      "speedup_vs_torch": 1.0578635094279136,
+      "copy_ms": 0.010751999616622925,
+      "effective_GB_s": 75.96439057623165
+    },
+    {
+      "rows": 256,
+      "cols": 512,
+      "version": "shared_32x32",
+      "torch_ms": 0.014602240324020386,
+      "custom_ms": 0.014950400590896607,
+      "speedup_vs_torch": 0.9767123118367665,
+      "copy_ms": 0.010751999616622925,
+      "effective_GB_s": 70.13698352928982
+    },
+    {
+      "rows": 257,
+      "cols": 513,
+      "version": "naive_read",
+      "torch_ms": 0.02105151891708374,
+      "custom_ms": 0.023060479164123536,
+      "speedup_vs_torch": 0.9128829790247703,
+      "copy_ms": 0.012247040271759033,
+      "effective_GB_s": 45.737471129433374
+    },
+    {
+      "rows": 257,
+      "cols": 513,
+      "version": "naive_write",
+      "torch_ms": 0.02105151891708374,
+      "custom_ms": 0.012222720384597778,
+      "speedup_vs_torch": 1.722326802436829,
+      "copy_ms": 0.012247040271759033,
+      "effective_GB_s": 86.2924101028356
+    },
+    {
+      "rows": 257,
+      "cols": 513,
+      "version": "shared_32x32",
+      "torch_ms": 0.02105151891708374,
+      "custom_ms": 0.013332480192184448,
+      "speedup_vs_torch": 1.5789649497791283,
+      "copy_ms": 0.012247040271759033,
+      "effective_GB_s": 79.1096618780867
+    },
+    {
+      "rows": 1024,
+      "cols": 1024,
+      "version": "naive_read",
+      "torch_ms": 0.08429568290710449,
+      "custom_ms": 0.16920576095581055,
+      "speedup_vs_torch": 0.49818447333550886,
+      "copy_ms": 0.051179518699645994,
+      "effective_GB_s": 49.57637347933297
+    },
+    {
+      "rows": 1024,
+      "cols": 1024,
+      "version": "naive_write",
+      "torch_ms": 0.08429568290710449,
+      "custom_ms": 0.07159808158874512,
+      "speedup_vs_torch": 1.1773455522355136,
+      "copy_ms": 0.051179518699645994,
+      "effective_GB_s": 117.16246879607246
+    },
+    {
+      "rows": 1024,
+      "cols": 1024,
+      "version": "shared_32x32",
+      "torch_ms": 0.08429568290710449,
+      "custom_ms": 0.0527788782119751,
+      "speedup_vs_torch": 1.5971480592775933,
+      "copy_ms": 0.051179518699645994,
+      "effective_GB_s": 158.93873239042608
+    },
+    {
+      "rows": 2048,
+      "cols": 2048,
+      "version": "naive_read",
+      "torch_ms": 0.33347583770751954,
+      "custom_ms": 0.577270393371582,
+      "speedup_vs_torch": 0.5776770150290128,
+      "copy_ms": 0.18745344161987304,
+      "effective_GB_s": 58.126022718787546
+    },
+    {
+      "rows": 2048,
+      "cols": 2048,
+      "version": "naive_write",
+      "torch_ms": 0.33347583770751954,
+      "custom_ms": 0.3403776168823242,
+      "speedup_vs_torch": 0.9797231697018703,
+      "copy_ms": 0.18745344161987304,
+      "effective_GB_s": 98.58001917793696
+    },
+    {
+      "rows": 2048,
+      "cols": 2048,
+      "version": "shared_32x32",
+      "torch_ms": 0.33347583770751954,
+      "custom_ms": 0.19113983154296876,
+      "speedup_vs_torch": 1.7446695176800615,
+      "copy_ms": 0.18745344161987304,
+      "effective_GB_s": 175.54913452174344
+    }
+  ],
+  "allocation": "preallocated outputs for custom and torch copy of transposed view",
+  "bandwidth": "2 * numel * 4 / seconds; includes cache effects; copy is not a transpose"
+}

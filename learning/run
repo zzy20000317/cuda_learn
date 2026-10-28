@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$HERE/.cache/torch_extensions" "$HERE/.cache/pip" "$HERE/.cache/xdg" "$HERE/.cache/cuda" "$HERE/.cache/tmp"
+export MAMBA_ROOT_PREFIX="$HERE/.mamba"
+export CONDA_PKGS_DIRS="$HERE/.mamba/pkgs"
+unset PYTHONPATH PYTHONHOME CUDA_HOME CUDA_PATH CONDA_PREFIX LD_LIBRARY_PATH
+unset CC CXX CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LIBRARY_PATH CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH CMAKE_PREFIX_PATH
+export PATH="/usr/bin:/bin:/usr/lib/wsl/lib"
+export CUDA_GDB_BINARIES="$HERE/tools/cuda-gdb/bin/cuda-gdb-python3.11-tui $HERE/tools/cuda-gdb/bin/cuda-gdb-minimal"
+export PYTHONNOUSERSITE=1
+export PIP_CACHE_DIR="$HERE/.cache/pip"
+export XDG_CACHE_HOME="$HERE/.cache/xdg"
+export FLASHINFER_WORKSPACE_BASE="$HERE"
+export TVM_FFI_CACHE_DIR="$HERE/.cache/tvm-ffi"
+export TRITON_CACHE_DIR="$HERE/.cache/triton"
+export PIP_CONFIG_FILE=/dev/null
+export CUDA_CACHE_PATH="$HERE/.cache/cuda"
+export TMPDIR="$HERE/.cache/tmp"
+export TORCH_EXTENSIONS_DIR="$HERE/.cache/torch_extensions"
+export TORCH_CUDA_ARCH_LIST=8.6
+export MAX_JOBS="${MAX_JOBS:-2}"
+export CUDA_HOME="$HERE/.env"
+export CUDA_PATH="$CUDA_HOME"
+export CPATH="$CUDA_HOME/targets/x86_64-linux/include"
+export CUDACXX="$CUDA_HOME/bin/nvcc"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib:$CUDA_HOME/targets/x86_64-linux/lib:/usr/lib/wsl/lib"
+if [ "$#" -eq 0 ]; then set -- bash --noprofile --norc; fi
+exec "$HERE/tools/bin/micromamba" --no-rc run -p "$HERE/.env" "$@"

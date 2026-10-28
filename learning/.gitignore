@@ -1,0 +1,8 @@
+.env/
+.mamba/
+.cache/
+tools/
+build/
+logs/
+__pycache__/
+*.so

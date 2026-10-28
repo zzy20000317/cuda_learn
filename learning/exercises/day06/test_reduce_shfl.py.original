@@ -1,0 +1,30 @@
+from pathlib import Path
+import torch
+from torch.utils.cpp_extension import load
+
+HERE = Path(__file__).resolve().parent
+lib = load(
+    name="learning_reduce_shfl",
+    sources=[str(HERE / "reduce_shfl.cu")],
+    extra_cuda_cflags=["-O3"],
+    extra_cflags=["-O3"],
+    verbose=False,
+)
+
+def check(n, block=256, max_blocks=512):
+    torch.manual_seed(42)
+    a = torch.randn(n, device="cuda", dtype=torch.float32)
+    ref = a.sum()
+    out = lib.reduce_sum_shfl(a, block, max_blocks).squeeze()
+    diff = (out - ref).abs().item()
+    ok = torch.allclose(out, ref, rtol=1e-4, atol=1e-3)
+    print(f"n={n:10d}  ref={ref.item():12.4f}  out={out.item():12.4f}  "
+          f"diff={diff:.2e}  {'PASS' if ok else 'FAIL'}")
+    assert ok
+
+if __name__ == "__main__":
+    print(f"cuda available: {torch.cuda.is_available()}")
+    # 覆盖各种长度：0、1、略小于 block、略大于 block、非 32 倍数、大 N
+    for n in [0, 1, 31, 32, 33, 255, 256, 257, 1000, 1024, 10000, 100000, 1000000]:
+        check(n)
+    print("\nALL PASS")

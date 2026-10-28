@@ -1,0 +1,159 @@
+from functools import partial
+from pathlib import Path
+
+import numpy as np
+import torch
+from flashinfer.testing.utils import bench_gpu_time, get_l2_cache_size
+from torch.utils.cpp_extension import load
+
+torch.set_grad_enabled(False)
+
+common_flags = ["-O3", "-std=c++17"]
+current_dir = Path(__file__).parent.resolve()
+# Load the CUDA kernel as a python module
+lib = load(
+    name="rope_lib",
+    sources=[str(current_dir / "rope_neox.cu")],
+    extra_cuda_cflags=common_flags
+    + [
+        "-U__CUDA_NO_HALF_OPERATORS__",
+        "-U__CUDA_NO_HALF_CONVERSIONS__",
+        "-U__CUDA_NO_HALF2_OPERATORS__",
+        "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+        "--expt-relaxed-constexpr",
+        "--expt-extended-lambda",
+        "--use_fast_math",
+    ],
+    extra_cflags=common_flags,
+    verbose=True,
+)
+base = 10000
+
+
+def compute_default_rope_parameters(head_dim):
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, head_dim, 2).float().cuda() / head_dim)
+    )  # 64
+    return inv_freq
+
+
+INV_FREQS = {
+    256: compute_default_rope_parameters(256),
+    128: compute_default_rope_parameters(128),
+}
+position_ids = torch.arange(8192).float().cuda()
+freqs = {
+    256:torch.cat([torch.outer(position_ids, INV_FREQS[256]), torch.outer(position_ids, INV_FREQS[256])], dim=-1),
+    128:torch.cat([torch.outer(position_ids, INV_FREQS[128]), torch.outer(position_ids, INV_FREQS[128])], dim=-1),
+}
+COS = {
+    256:torch.cos(freqs[256]),
+    128:torch.cos(freqs[128]),
+}
+SIN = {
+    256:torch.sin(freqs[256]),
+    128:torch.sin(freqs[128]),
+}
+
+def rotate_half(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, cos, sin):
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    return q_embed
+#@torch.compile()
+def rope_with_sin_cos_cache(q):  # q shape: [bs, seqlen, head_dim]
+    # inv_freq = compute_default_rope_parameters(q.shape[-1])
+    # position_ids = torch.arange(q.shape[1], device=q.device).float()
+
+    # # [seq_len] outer [dim/2] -> [seq_len, dim/2]
+    # freqs = torch.outer(position_ids, inv_freq)
+
+    # # [seq_len, dim/2] -> [seq_len, dim]
+    # freqs = torch.cat([freqs, freqs], dim=-1)
+
+    # cos, sin = torch.cos(freqs), torch.sin(freqs)
+    cos = COS[q.shape[-1]][:q.shape[1], :q.shape[-1]]
+    sin = SIN[q.shape[-1]][:q.shape[1], :q.shape[-1]]
+
+    return apply_rotary_pos_emb(q, cos, sin)
+
+# neo-x stype rope, single head single batch
+#@torch.compile()
+def rope(q):  # q shape: [bs, seqlen, head_dim]
+    inv_freq = compute_default_rope_parameters(q.shape[-1])
+    position_ids = torch.arange(q.shape[1], device=q.device).float()
+
+    # [seq_len] outer [dim/2] -> [seq_len, dim/2]
+    freqs = torch.outer(position_ids, inv_freq)
+
+    # [seq_len, dim/2] -> [seq_len, dim]
+    freqs = torch.cat([freqs, freqs], dim=-1)
+
+    cos, sin = torch.cos(freqs), torch.sin(freqs)
+    cos = COS[q.shape[-1]][:q.shape[1], :q.shape[-1]]
+    sin = SIN[q.shape[-1]][:q.shape[1], :q.shape[-1]]
+
+    return apply_rotary_pos_emb(q, cos, sin)
+
+
+baseline = None
+
+
+def benchmark(op, a, b=None, warmup=10, rep=100, prefix="torch"):
+    input_args = (a, b) if b is not None else (a,)
+
+    times = bench_gpu_time(
+        fn=op,
+        input_args=input_args,
+        dry_run_iters=warmup,
+        repeat_iters=rep,
+        enable_cupti=False,
+        use_cuda_graph=False,
+        cold_l2_cache=True,
+    )
+    avg_duration = float(np.median(times))
+
+    if prefix == "torch":
+        global baseline
+        baseline = avg_duration
+        print(f"{prefix:30s} mean time: {avg_duration:8.6f} ms")
+    else:
+        speedup = baseline / avg_duration
+        print(f"{prefix:30s} mean time: {avg_duration:8.6f} ms, speedup: {speedup:.2f}")
+
+    return op(*input_args)
+
+
+def diff_check(a, b, prefix="torch", eps=1e-4):
+    message = f"{prefix} result diff"
+    assert torch.mean(torch.abs(a - b)).item() < eps, message
+
+
+if __name__ == "__main__":
+    # test the kernel
+    device = torch.device("cuda")
+    batch_sizes = [64, 128,]
+    seq_lens = [512, 1024, 2048, 4096, 8192]
+    head_dim = [128, 256]
+    torch.manual_seed(42)
+    for bs in batch_sizes:
+        for n in seq_lens:
+            for m in head_dim:
+                print("#" * 100)
+                print(f"bs: {bs}, n: {n}, m: {m}")
+                a = torch.randn(bs, n, m).float().cuda()
+
+                b = benchmark(rope, a)
+                c = benchmark(rope_with_sin_cos_cache, a, prefix="torch.rope_with_sin_cos_cache")
+                diff_check(b, c, prefix="rope_with_sin_cos_cache")
+                b_my = torch.empty_like(a)
+                benchmark(lib.rope, a, b_my, prefix="rope")
+                # print(b, b_my)
+                diff_check(b, b_my, prefix="rope")
+
+                benchmark(lib.rope_fp32x4, a, b_my, prefix="rope_fp32x4")
+                diff_check(b, b_my, prefix="rope_fp32x4")

@@ -1,0 +1,6 @@
+numpy==2.2.6
+flashinfer-python==0.6.2
+nvidia-cutlass-dsl==4.3.4
+nvidia-cudnn-frontend==1.13.0
+cuda-python==12.8.0
+pytest==8.4.2

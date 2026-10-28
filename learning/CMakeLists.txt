@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.24)
+project(cuda_learning LANGUAGES CXX CUDA)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_ARCHITECTURES 86)
+add_executable(probe exercises/probe.cu)
+target_compile_options(probe PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)

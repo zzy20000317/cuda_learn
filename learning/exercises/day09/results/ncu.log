@@ -1,0 +1,4 @@
+==PROF== Connected to process 59215 (/home/zzy/vitamin-cuda-main/learning/.env/bin/python3.11)
+==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0. For instructions on enabling permissions and to get more information see https://developer.nvidia.com/ERR_NVGPUCTRPERM
+PASS: profile kernels 32x32 and 32x33
+==PROF== Disconnected from process 59215

@@ -1,0 +1,103 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3050 Laptop GPU",
+  "capability": [
+    8,
+    6
+  ],
+  "torch": "2.9.1+cu128",
+  "cuda": "12.8",
+  "timing": "CUDA events; warm cache; 20 warmup; median of 5 x 50 calls; excludes JIT and input initialization",
+  "checks": {
+    "numerical_cases": 360,
+    "nondefault_stream": true,
+    "invalid_inputs": true,
+    "repeated_calls": true,
+    "max_abs_error": 0.00025771832224563695
+  },
+  "rows": [
+    {
+      "n": 1024,
+      "block": 128,
+      "max_blocks": 256,
+      "torch_ms": 0.07388544082641602,
+      "custom_ms": 0.02795583963394165,
+      "speedup": 2.6429340629322566,
+      "abs_error": 3.8294820114970207e-07
+    },
+    {
+      "n": 1024,
+      "block": 256,
+      "max_blocks": 256,
+      "torch_ms": 0.07388544082641602,
+      "custom_ms": 0.0314572811126709,
+      "speedup": 2.3487548260060906,
+      "abs_error": 3.243971150368452e-06
+    },
+    {
+      "n": 1024,
+      "block": 512,
+      "max_blocks": 256,
+      "torch_ms": 0.07388544082641602,
+      "custom_ms": 0.032242560386657716,
+      "speedup": 2.291550048766925,
+      "abs_error": 1.336622517555952e-06
+    },
+    {
+      "n": 65536,
+      "block": 128,
+      "max_blocks": 256,
+      "torch_ms": 0.017273600101470946,
+      "custom_ms": 0.02910207986831665,
+      "speedup": 0.5935520821752903,
+      "abs_error": 5.183288755006288e-05
+    },
+    {
+      "n": 65536,
+      "block": 256,
+      "max_blocks": 256,
+      "torch_ms": 0.017273600101470946,
+      "custom_ms": 0.03540992021560669,
+      "speedup": 0.4878181028450248,
+      "abs_error": 3.971984682493712e-05
+    },
+    {
+      "n": 65536,
+      "block": 512,
+      "max_blocks": 256,
+      "torch_ms": 0.017273600101470946,
+      "custom_ms": 0.02903359889984131,
+      "speedup": 0.5949520815886645,
+      "abs_error": 5.183288755006288e-05
+    },
+    {
+      "n": 1048576,
+      "block": 128,
+      "max_blocks": 256,
+      "torch_ms": 0.04134079933166504,
+      "custom_ms": 0.1226483154296875,
+      "speedup": 0.33706781203501424,
+      "abs_error": 1.4395246353160474e-05
+    },
+    {
+      "n": 1048576,
+      "block": 256,
+      "max_blocks": 256,
+      "torch_ms": 0.04134079933166504,
+      "custom_ms": 0.10323967933654785,
+      "speedup": 0.4004351776113082,
+      "abs_error": 0.0003518156911468395
+    },
+    {
+      "n": 1048576,
+      "block": 512,
+      "max_blocks": 256,
+      "torch_ms": 0.04134079933166504,
+      "custom_ms": 0.03581952095031738,
+      "speedup": 1.154141603094185,
+      "abs_error": 0.0002890534494781605
+    }
+  ],
+  "allocation": "Both custom and torch allocate an output; custom includes zeroing and atomicAdd; timing is public API cost",
+  "tolerance": "exact ones; random: 1e-4 + 5e-5*max(abs(FP64 sum), sqrt(N))",
+  "multigpu_tested": false
+}

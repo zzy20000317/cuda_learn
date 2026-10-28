@@ -1,0 +1,554 @@
+#include <cstdio>
+#include <cuda.h>
+#include <cuda_runtime.h>
+
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_fp8.h>
+
+#include <ATen/cuda/CUDAContext.h>
+#include <torch/extension.h>
+#include <torch/types.h>
+
+#include "../common/pack.cuh"
+
+template <const int warp_size = WARP_SIZE>
+__device__ __forceinline__ float _warp_cum_sum(int lane_id, float val) {
+#pragma unroll
+    for (int offset = 1; offset < WARP_SIZE; offset <<= 1) {
+        float other_val = __shfl_up_sync(0xffffffff, val, offset);
+        if (lane_id >= offset) {
+            val += other_val;
+        }
+    }
+    return val;
+}
+
+// 1 cta for one row
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 256>
+__global__ void cumsum_fp32_kernel(float *a, float *b, int n) {
+    int tid = threadIdx.x;
+    int row = blockIdx.x;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+    __shared__ float block_delta;
+
+    float delta = 0.f;
+    int row_offset = row * n;
+    for (int i = 0; i < n; i += BLOCK_SIZE) {
+        int col = i + tid;
+        float val = (col < n) ? a[row_offset + col] : 0.0f;
+        // warp
+        val = _warp_cum_sum<32>(lane_id, val);
+
+        // block
+        if (lane_id == 32 - 1)
+            smem[warp_id] = val;
+        __syncthreads();
+
+        if (warp_id == 0) {
+            float tmp_v = tid < num_warp ? smem[tid] : 0.f;
+            tmp_v = _warp_cum_sum<num_warp>(lane_id, tmp_v);
+            if (tid < num_warp)
+                smem[tid] = tmp_v;
+        }
+        __syncthreads();
+
+        if (warp_id > 0) {
+            val += smem[warp_id - 1];
+        }
+
+        val += delta;
+
+        if (col < n) {
+            b[row_offset + col] = val;
+        }
+
+        if (tid == BLOCK_SIZE - 1) {
+            block_delta = val;
+        }
+        __syncthreads();
+
+        delta = block_delta;
+    }
+}
+
+// bf16: bf16 I/O, float accumulate
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 256>
+__global__ void cumsum_bf16_kernel(__nv_bfloat16 *a, __nv_bfloat16 *b, int n) {
+    int tid = threadIdx.x;
+    int row = blockIdx.x;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+    __shared__ float block_delta;
+
+    float delta = 0.f;
+    int row_offset = row * n;
+    for (int i = 0; i < n; i += BLOCK_SIZE) {
+        int col = i + tid;
+        float val = (col < n) ? __bfloat162float(a[row_offset + col]) : 0.0f;
+        val = _warp_cum_sum<32>(lane_id, val);
+
+        if (lane_id == 32 - 1)
+            smem[warp_id] = val;
+        __syncthreads();
+
+        if (warp_id == 0) {
+            float tmp_v = tid < num_warp ? smem[tid] : 0.f;
+            tmp_v = _warp_cum_sum<num_warp>(lane_id, tmp_v);
+            if (tid < num_warp)
+                smem[tid] = tmp_v;
+        }
+        __syncthreads();
+
+        if (warp_id > 0) {
+            val += smem[warp_id - 1];
+        }
+
+        val += delta;
+
+        if (col < n) {
+            b[row_offset + col] = __float2bfloat16(val);
+        }
+
+        if (tid == BLOCK_SIZE - 1) {
+            block_delta = val;
+        }
+        __syncthreads();
+
+        delta = block_delta;
+    }
+}
+
+template <const int warp_size = WARP_SIZE>
+__device__ __forceinline__ void _warp_cum_sum(int lane_id, pack128 &val) {
+#pragma unroll
+    for (int offset = 1; offset < WARP_SIZE; offset <<= 1) {
+        float other_val = __shfl_up_sync(0xffffffff, val.f[3], offset);
+        if (lane_id >= offset) {
+#pragma unroll
+            for (int k = 0; k < 4; k++)
+                val.f[k] += other_val;
+        }
+    }
+}
+
+// warp cumsum over N float registers using the last element as the lane aggregate
+template <const int N, const int warp_size = WARP_SIZE>
+__device__ __forceinline__ void _warp_cum_sum_n(int lane_id, float (&val)[N]) {
+#pragma unroll
+    for (int offset = 1; offset < WARP_SIZE; offset <<= 1) {
+        float other_val = __shfl_up_sync(0xffffffff, val[N - 1], offset);
+        if (lane_id >= offset) {
+#pragma unroll
+            for (int k = 0; k < N; k++)
+                val[k] += other_val;
+        }
+    }
+}
+
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 1024>
+__global__ void cumsum_fp32x4_kernel(float *a, float *b, int n) {
+    int tid = threadIdx.x;
+    int row = blockIdx.x;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+    __shared__ float block_delta;
+
+    float delta = 0.f;
+    int row_offset = row * n;
+    for (int i = 0; i < n; i += CHUNK_SIZE) {
+        int col = i + tid * 4;
+        pack128 f4;
+        f4.f4 = (col < n) ? FLOAT4(a[row_offset + col]) : make_float4(0.f, 0.f, 0.f, 0.f);
+#pragma unroll
+        for (int k = 1; k < 4; k++)
+            f4.f[k] += f4.f[k - 1];
+        _warp_cum_sum<32>(lane_id, f4);
+
+        if (lane_id == 32 - 1)
+            smem[warp_id] = f4.f[3];
+        __syncthreads();
+
+        if (warp_id == 0) {
+            float tmp_v = tid < num_warp ? smem[tid] : 0.f;
+            tmp_v = _warp_cum_sum<num_warp>(lane_id, tmp_v);
+            if (tid < num_warp)
+                smem[tid] = tmp_v;
+        }
+        __syncthreads();
+
+        float prefix = delta + (warp_id > 0 ? smem[warp_id - 1] : 0.f);
+#pragma unroll
+        for (int k = 0; k < 4; k++)
+            f4.f[k] += prefix;
+
+        if (col < n) {
+            FLOAT4(b[row_offset + col]) = f4.f4;
+        }
+
+        if (tid == BLOCK_SIZE - 1) {
+            block_delta = f4.f[3];
+        }
+
+        __syncthreads();
+
+        delta = block_delta;
+    }
+}
+
+// bf16x8 packed r/w
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 2048>
+__global__ void cumsum_bf16x8_packed_kernel(__nv_bfloat16 *a, __nv_bfloat16 *b, int n) {
+    int tid = threadIdx.x;
+    int row = blockIdx.x;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+    __shared__ float block_delta;
+
+    float delta = 0.f;
+    int row_offset = row * n;
+    for (int i = 0; i < n; i += CHUNK_SIZE) {
+        int col = i + tid * 8;
+        pack128 in;
+        in.f4 = (col < n) ? LDST128BITS(a[row_offset + col]) : make_float4(0.f, 0.f, 0.f, 0.f);
+
+        float v[8];
+#pragma unroll
+        for (int j = 0; j < 4; j++) {
+            float2 f2 = (col < n) ? __bfloat1622float2(in.bf2[j]) : make_float2(0.f, 0.f);
+            v[j * 2] = f2.x;
+            v[j * 2 + 1] = f2.y;
+        }
+#pragma unroll
+        for (int k = 1; k < 8; k++)
+            v[k] += v[k - 1];
+        _warp_cum_sum_n<8, 32>(lane_id, v);
+
+        if (lane_id == 32 - 1)
+            smem[warp_id] = v[7];
+        __syncthreads();
+
+        if (warp_id == 0) {
+            float tmp_v = tid < num_warp ? smem[tid] : 0.f;
+            tmp_v = _warp_cum_sum<num_warp>(lane_id, tmp_v);
+            if (tid < num_warp)
+                smem[tid] = tmp_v;
+        }
+        __syncthreads();
+
+        float prefix = delta + (warp_id > 0 ? smem[warp_id - 1] : 0.f);
+#pragma unroll
+        for (int k = 0; k < 8; k++)
+            v[k] += prefix;
+
+        if (col < n) {
+            pack128 out;
+#pragma unroll
+            for (int j = 0; j < 4; j++)
+                out.bf2[j] = __float22bfloat162_rn(make_float2(v[j * 2], v[j * 2 + 1]));
+            LDST128BITS(b[row_offset + col]) = out.f4;
+        }
+
+        if (tid == BLOCK_SIZE - 1) {
+            block_delta = v[7];
+        }
+
+        __syncthreads();
+
+        delta = block_delta;
+    }
+}
+
+template <const int warp_size = WARP_SIZE>
+__device__ __forceinline__ void _warp_reduce(float &val) {
+#pragma unroll
+    for (int offset = 1; offset < WARP_SIZE; offset <<= 1)
+        val += __shfl_xor_sync(0xffffffff, val, offset);
+}
+
+// split-k pass 1: local inclusive scan + write chunk sum
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 1024>
+__global__ void cumsum_fp32x4_split_k_pass_1_kernel(float *a, float *b, float *ws_sum, int n) {
+    int tid = threadIdx.x;
+    int chunk_id = blockIdx.x;
+    int row = blockIdx.y;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+
+    int row_offset = row * n;
+    int col = chunk_id * CHUNK_SIZE + tid * 4;
+    pack128 f4;
+    f4.f4 = (col < n) ? FLOAT4(a[row_offset + col]) : make_float4(0.f, 0.f, 0.f, 0.f);
+#pragma unroll
+    for (int k = 1; k < 4; k++)
+        f4.f[k] += f4.f[k - 1];
+    _warp_cum_sum<32>(lane_id, f4);
+
+    if (lane_id == 32 - 1)
+        smem[warp_id] = f4.f[3];
+    __syncthreads();
+
+    if (warp_id == 0) {
+        float tmp_v = tid < num_warp ? smem[tid] : 0.f;
+        tmp_v = _warp_cum_sum<num_warp>(lane_id, tmp_v);
+        if (tid < num_warp)
+            smem[tid] = tmp_v;
+    }
+    __syncthreads();
+
+    float prefix = (warp_id > 0 ? smem[warp_id - 1] : 0.f);
+#pragma unroll
+    for (int k = 0; k < 4; k++)
+        f4.f[k] += prefix;
+
+    if (col < n) {
+        FLOAT4(b[row_offset + col]) = f4.f4;
+    }
+
+    if (tid == BLOCK_SIZE - 1) {
+        ws_sum[row * gridDim.x + chunk_id] = f4.f[3];
+    }
+}
+
+// split-k pass 2: exclusive prefix of chunk sums + add back
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 1024>
+__global__ void cumsum_fp32x4_split_k_pass_2_kernel(float *b, float *ws_sum, int n) {
+    int tid = threadIdx.x;
+    int chunk_id = blockIdx.x;
+    int row = blockIdx.y;
+    int blocks_per_row = gridDim.x;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+    __shared__ float prefix_s;
+
+    float val = 0.f;
+    for (int i = tid; i < chunk_id; i += BLOCK_SIZE)
+        val += ws_sum[row * blocks_per_row + i];
+    _warp_reduce(val);
+    if (lane_id == 0)
+        smem[warp_id] = val;
+    __syncthreads();
+    if (warp_id == 0) {
+        float x = tid < num_warp ? smem[tid] : 0.f;
+        _warp_reduce<num_warp>(x);
+        if (tid == 0)
+            prefix_s = x;
+    }
+    __syncthreads();
+    float prefix = prefix_s;
+
+    int row_offset = row * n;
+    int col = chunk_id * CHUNK_SIZE + tid * 4;
+    if (col < n) {
+        pack128 f4;
+        f4.f4 = FLOAT4(b[row_offset + col]);
+#pragma unroll
+        for (int k = 0; k < 4; k++)
+            f4.f[k] += prefix;
+        FLOAT4(b[row_offset + col]) = f4.f4;
+    }
+}
+
+// Decoupled look-back tile: high 32b = status, low 32b = float bits
+enum ScanTileStatus : unsigned int { TILE_EMPTY = 0, TILE_PARTIAL = 1, TILE_INCLUSIVE = 2 };
+
+__device__ __forceinline__ unsigned long long pack_tile(ScanTileStatus status, float val) {
+    return (static_cast<unsigned long long>(status) << 32) | static_cast<unsigned long long>(__float_as_uint(val));
+}
+
+__device__ __forceinline__ void unpack_tile(unsigned long long packed, ScanTileStatus &status, float &val) {
+    status = static_cast<ScanTileStatus>(packed >> 32);
+    val = __uint_as_float(static_cast<unsigned int>(packed));
+}
+
+__device__ __forceinline__ unsigned long long load_tile(unsigned long long *ptr) { return atomicOr(ptr, 0ull); }
+
+// multi-CTA single kernel: local inclusive scan + decoupled look-back
+template <const int BLOCK_SIZE = 256, const int CHUNK_SIZE = 1024>
+__global__ void cumsum_fp32x4_multi_cta_scan_kernel(float *a, float *b, unsigned long long *tile_state, int n) {
+    int tid = threadIdx.x;
+    int chunk_id = blockIdx.x;
+    int row = blockIdx.y;
+    int blocks_per_row = gridDim.x;
+
+    const int num_warp = BLOCK_SIZE / 32;
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+
+    __shared__ float smem[num_warp];
+    __shared__ float block_sum_s;
+    __shared__ float prefix_s;
+
+    int row_offset = row * n;
+    int col = chunk_id * CHUNK_SIZE + tid * 4;
+    pack128 f4;
+    f4.f4 = (col < n) ? FLOAT4(a[row_offset + col]) : make_float4(0.f, 0.f, 0.f, 0.f);
+#pragma unroll
+    for (int k = 1; k < 4; k++)
+        f4.f[k] += f4.f[k - 1];
+    _warp_cum_sum<32>(lane_id, f4);
+
+    if (lane_id == 32 - 1)
+        smem[warp_id] = f4.f[3];
+    __syncthreads();
+
+    if (warp_id == 0) {
+        float tmp_v = tid < num_warp ? smem[tid] : 0.f;
+        tmp_v = _warp_cum_sum<num_warp>(lane_id, tmp_v);
+        if (tid < num_warp)
+            smem[tid] = tmp_v;
+    }
+    __syncthreads();
+
+    float local_prefix = (warp_id > 0 ? smem[warp_id - 1] : 0.f);
+#pragma unroll
+    for (int k = 0; k < 4; k++)
+        f4.f[k] += local_prefix;
+
+    if (tid == BLOCK_SIZE - 1)
+        block_sum_s = f4.f[3];
+    __syncthreads();
+    float block_sum = block_sum_s;
+
+    unsigned long long *row_tiles = tile_state + row * blocks_per_row;
+
+    if (tid == 0) {
+        float exclusive = 0.f;
+        if (chunk_id == 0) {
+            atomicExch(row_tiles + 0, pack_tile(TILE_INCLUSIVE, block_sum));
+        } else {
+            atomicExch(row_tiles + chunk_id, pack_tile(TILE_PARTIAL, block_sum));
+
+            int pred = chunk_id - 1;
+            while (pred >= 0) {
+                ScanTileStatus status;
+                float val;
+                unsigned long long packed;
+                do {
+                    packed = load_tile(row_tiles + pred);
+                    unpack_tile(packed, status, val);
+                } while (status == TILE_EMPTY);
+
+                exclusive += val;
+                if (status == TILE_INCLUSIVE)
+                    break;
+                --pred;
+            }
+
+            atomicExch(row_tiles + chunk_id, pack_tile(TILE_INCLUSIVE, exclusive + block_sum));
+        }
+        prefix_s = exclusive;
+    }
+    __syncthreads();
+    float prefix = prefix_s;
+
+#pragma unroll
+    for (int k = 0; k < 4; k++)
+        f4.f[k] += prefix;
+
+    if (col < n) {
+        FLOAT4(b[row_offset + col]) = f4.f4;
+    }
+}
+
+#define CHECK_T(x) TORCH_CHECK(x.is_cuda() && x.is_contiguous(), #x " must be contiguous CUDA tensor")
+
+#define binding_func_gen(name, num, ptr_type)                                                                          \
+    void name(torch::Tensor a, torch::Tensor b) {                                                                      \
+        CHECK_T(a);                                                                                                    \
+        CHECK_T(b);                                                                                                    \
+        const int bs = a.size(0);                                                                                      \
+        const int lda = a.size(1);                                                                                     \
+        const int threads_per_block = 256;                                                                             \
+        const int chunk_size = threads_per_block * num;                                                                \
+        const int grid = bs;                                                                                           \
+        cudaStream_t stream = at::cuda::getCurrentCUDAStream();                                                        \
+                                                                                                                       \
+        name##_kernel<threads_per_block, chunk_size><<<grid, threads_per_block, 0, stream>>>(                          \
+            reinterpret_cast<ptr_type *>(a.data_ptr()), reinterpret_cast<ptr_type *>(b.data_ptr()), lda);              \
+    }
+
+binding_func_gen(cumsum_fp32, 1, float);
+binding_func_gen(cumsum_fp32x4, 4, float);
+binding_func_gen(cumsum_bf16, 1, __nv_bfloat16);
+binding_func_gen(cumsum_bf16x8_packed, 8, __nv_bfloat16);
+
+void cumsum_fp32x4_split_k(torch::Tensor a, torch::Tensor b) {
+    CHECK_T(a);
+    CHECK_T(b);
+    const int bs = a.size(0);
+    const int lda = a.size(1);
+    constexpr int threads_per_block = 256;
+    constexpr int vec = 4;
+    constexpr int chunk_size = threads_per_block * vec;
+    const int blocks_per_row = (lda + chunk_size - 1) / chunk_size;
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    auto options = torch::TensorOptions().dtype(torch::kFloat32).device(a.device());
+    auto ws_sum = torch::empty({bs, blocks_per_row}, options);
+
+    dim3 grid(blocks_per_row, bs);
+    cumsum_fp32x4_split_k_pass_1_kernel<threads_per_block, chunk_size>
+        <<<grid, threads_per_block, 0, stream>>>(reinterpret_cast<float *>(a.data_ptr()),
+                                                 reinterpret_cast<float *>(b.data_ptr()),
+                                                 ws_sum.data_ptr<float>(),
+                                                 lda);
+    cumsum_fp32x4_split_k_pass_2_kernel<threads_per_block, chunk_size><<<grid, threads_per_block, 0, stream>>>(
+        reinterpret_cast<float *>(b.data_ptr()), ws_sum.data_ptr<float>(), lda);
+}
+
+void cumsum_fp32x4_multi_cta_scan(torch::Tensor a, torch::Tensor b) {
+    CHECK_T(a);
+    CHECK_T(b);
+    const int bs = a.size(0);
+    const int lda = a.size(1);
+    constexpr int threads_per_block = 256;
+    constexpr int vec = 4;
+    constexpr int chunk_size = threads_per_block * vec;
+    const int blocks_per_row = (lda + chunk_size - 1) / chunk_size;
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    auto options = torch::TensorOptions().dtype(torch::kLong).device(a.device());
+    auto tile_state = torch::zeros({bs, blocks_per_row}, options);
+
+    dim3 grid(blocks_per_row, bs);
+    cumsum_fp32x4_multi_cta_scan_kernel<threads_per_block, chunk_size>
+        <<<grid, threads_per_block, 0, stream>>>(reinterpret_cast<float *>(a.data_ptr()),
+                                                 reinterpret_cast<float *>(b.data_ptr()),
+                                                 reinterpret_cast<unsigned long long *>(tile_state.data_ptr()),
+                                                 lda);
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    torch_pybinding_func(cumsum_fp32);
+    torch_pybinding_func(cumsum_fp32x4);
+    torch_pybinding_func(cumsum_fp32x4_split_k);
+    torch_pybinding_func(cumsum_fp32x4_multi_cta_scan);
+    torch_pybinding_func(cumsum_bf16);
+    torch_pybinding_func(cumsum_bf16x8_packed);
+}

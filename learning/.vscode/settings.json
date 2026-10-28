@@ -1,0 +1,12 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.env/bin/python",
+  "C_Cpp.default.compilerPath": "${workspaceFolder}/.env/bin/x86_64-conda-linux-gnu-g++",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/.env/targets/x86_64-linux/include",
+    "${workspaceFolder}/.env/include"
+  ],
+  "files.associations": {
+    "*.cu": "cuda-cpp",
+    "*.cuh": "cuda-cpp"
+  }
+}

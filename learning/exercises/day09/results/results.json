@@ -1,0 +1,135 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3050 Laptop GPU",
+  "capability": [
+    8,
+    6
+  ],
+  "torch": "2.9.1+cu128",
+  "cuda": "12.8",
+  "timing": "CUDA events; warm cache; 20 warmup; median of 5 x 50 calls; excludes JIT and input initialization",
+  "checks": {
+    "exact_cases": 50,
+    "nondefault_stream": true,
+    "invalid_inputs": true,
+    "empty_dimensions": true,
+    "offset_view": true
+  },
+  "rows": [
+    {
+      "rows": 32,
+      "cols": 32,
+      "version": "shared_32x32",
+      "torch_ms": 0.01715391993522644,
+      "custom_ms": 0.010316799879074096,
+      "speedup_vs_torch": 1.6627171347987761,
+      "copy_ms": null,
+      "effective_GB_s": 0.7940446743196117,
+      "speedup_vs_unpadded": 1.0
+    },
+    {
+      "rows": 32,
+      "cols": 32,
+      "version": "padded_32x33",
+      "torch_ms": 0.01715391993522644,
+      "custom_ms": 0.026657919883728027,
+      "speedup_vs_torch": 0.6434830628213112,
+      "copy_ms": null,
+      "effective_GB_s": 0.3073007960009809,
+      "speedup_vs_unpadded": 0.38700693542752607
+    },
+    {
+      "rows": 256,
+      "cols": 512,
+      "version": "shared_32x32",
+      "torch_ms": 0.02377471923828125,
+      "custom_ms": 0.016767359972000122,
+      "speedup_vs_torch": 1.4179166713175326,
+      "copy_ms": null,
+      "effective_GB_s": 62.536738147867105,
+      "speedup_vs_unpadded": 1.0
+    },
+    {
+      "rows": 256,
+      "cols": 512,
+      "version": "padded_32x33",
+      "torch_ms": 0.02377471923828125,
+      "custom_ms": 0.015320320129394532,
+      "speedup_vs_torch": 1.5518421963432458,
+      "copy_ms": null,
+      "effective_GB_s": 68.44347840931444,
+      "speedup_vs_unpadded": 1.094452324127954
+    },
+    {
+      "rows": 257,
+      "cols": 513,
+      "version": "shared_32x32",
+      "torch_ms": 0.02899967908859253,
+      "custom_ms": 0.015073280334472656,
+      "speedup_vs_torch": 1.9239129403219644,
+      "copy_ms": null,
+      "effective_GB_s": 69.9733552747528,
+      "speedup_vs_unpadded": 1.0
+    },
+    {
+      "rows": 257,
+      "cols": 513,
+      "version": "padded_32x33",
+      "torch_ms": 0.02899967908859253,
+      "custom_ms": 0.014110720157623291,
+      "speedup_vs_torch": 2.05515230722831,
+      "copy_ms": null,
+      "effective_GB_s": 74.74657481816654,
+      "speedup_vs_unpadded": 1.068214815834849
+    },
+    {
+      "rows": 1024,
+      "cols": 1024,
+      "version": "shared_32x32",
+      "torch_ms": 0.07763967990875244,
+      "custom_ms": 0.052838401794433595,
+      "speedup_vs_torch": 1.46937979333303,
+      "copy_ms": null,
+      "effective_GB_s": 158.75968453087694,
+      "speedup_vs_unpadded": 1.0
+    },
+    {
+      "rows": 1024,
+      "cols": 1024,
+      "version": "padded_32x33",
+      "torch_ms": 0.07763967990875244,
+      "custom_ms": 0.049295358657836914,
+      "speedup_vs_torch": 1.5749896546580735,
+      "copy_ms": null,
+      "effective_GB_s": 170.17034115170983,
+      "speedup_vs_unpadded": 1.0718737672889092
+    },
+    {
+      "rows": 2048,
+      "cols": 2048,
+      "version": "shared_32x32",
+      "torch_ms": 0.3377542495727539,
+      "custom_ms": 0.19980287551879883,
+      "speedup_vs_torch": 1.690437380822258,
+      "copy_ms": null,
+      "effective_GB_s": 167.93768314331876,
+      "speedup_vs_unpadded": 1.0
+    },
+    {
+      "rows": 2048,
+      "cols": 2048,
+      "version": "padded_32x33",
+      "torch_ms": 0.3377542495727539,
+      "custom_ms": 0.18714431762695313,
+      "speedup_vs_torch": 1.8047796153021396,
+      "copy_ms": null,
+      "effective_GB_s": 179.29709234819632,
+      "speedup_vs_unpadded": 1.0676406211653127
+    }
+  ],
+  "allocation": "preallocated output",
+  "shared_bytes": {
+    "unpadded": 4096,
+    "padded": 4224
+  },
+  "bandwidth": "8 * rows * cols / seconds; effective traffic, not physical DRAM bandwidth"
+}
